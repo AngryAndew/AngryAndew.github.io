@@ -32,6 +32,7 @@ function App() {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null); // State for image preview
   const [ingredients, setIngredients] = useState([{ name: "", amount: "" }]);
   const [directions, setDirections] = useState([""]);
 
@@ -69,13 +70,29 @@ function App() {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => setImage(reader.result);
+      reader.onload = () => {
+        setImage(reader.result); // Base64 image for PDF
+        setImagePreview(reader.result); // Base64 image for preview
+      };
       reader.readAsDataURL(file);
     }
   };
 
   const generatePDF = () => {
     const doc = new jsPDF();
+    const pageHeight = 297; // A4 page height in mm
+    const marginTop = 20; // Top margin in mm
+    const lineSpacing = 10; // Spacing between lines
+    const contentWidth = 180; // Content width in mm (15mm margins on each side)
+    let cursorY = marginTop;
+
+    // Function to add new pages if needed
+    const checkPageHeight = (increment) => {
+      if (cursorY + increment > pageHeight - marginTop) {
+        doc.addPage();
+        cursorY = marginTop;
+      }
+    };
 
     // Cover page
     doc.setFillColor(80, 200, 120); // Emerald green background
@@ -91,51 +108,68 @@ function App() {
       doc.addImage(image, "JPEG", 55, 90, 100, 100); // Centered image
     }
 
-    doc.addPage(); // Start a new page for the content
+    doc.addPage(); // Start a new page for content
+    cursorY = marginTop;
 
     // Ingredients section
     doc.setTextColor(0, 0, 0);
     doc.setFont("times", "italic");
     doc.setFontSize(18);
-    doc.text("Ingredients", 20, 20);
+    doc.text("Ingredients", 20, cursorY);
+    cursorY += lineSpacing;
 
     doc.setFont("times", "normal");
     doc.setFontSize(14);
 
     ingredients.forEach((ingredient, index) => {
-      const y = 30 + index * 10;
-      doc.setDrawColor(80, 200, 120); // Emerald green border
-      doc.roundedRect(15, y - 5, 180, 10, 2, 2);
-      doc.text(`${index + 1}. ${ingredient.name}`, 20, y);
-      doc.text(`${ingredient.amount}`, 140, y);
+      checkPageHeight(lineSpacing);
+      doc.text(`${index + 1}. ${ingredient.name} - ${ingredient.amount}`, 20, cursorY);
+      cursorY += lineSpacing;
     });
 
     // Directions section
-    const startY = 50 + ingredients.length * 10;
+    cursorY += lineSpacing; // Add spacing before starting directions
+    checkPageHeight(lineSpacing);
     doc.setFont("times", "italic");
     doc.setFontSize(18);
-    doc.text("Directions", 20, startY);
+    doc.text("Directions", 20, cursorY);
+    cursorY += lineSpacing;
 
     doc.setFont("times", "normal");
     doc.setFontSize(14);
 
     directions.forEach((direction, index) => {
-      const y = startY + 10 + index * 10;
-      doc.text(`${index + 1}. ${direction}`, 20, y);
+      const lines = doc.splitTextToSize(`${index + 1}. ${direction}`, contentWidth); // Split long text
+      lines.forEach((line) => {
+        checkPageHeight(lineSpacing);
+        doc.text(line, 20, cursorY);
+        cursorY += lineSpacing;
+      });
     });
 
     // Footer
+    checkPageHeight(lineSpacing);
     doc.setFont("times", "italic");
     doc.setFontSize(12);
-    doc.text("Created with Recipe Creator", 105, 290, { align: "center" });
+    doc.text("Created with Recipe Creator", 105, pageHeight - 10, { align: "center" });
 
-    doc.save("recipe.pdf");
+    return doc;
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    generatePDF();
+    const doc = generatePDF();
+    doc.save("recipe.pdf");
     alert("Recipe PDF has been generated and downloaded!");
+  };
+
+  const handlePreview = () => {
+    const doc = generatePDF();
+    const pdfDataUri = doc.output("datauristring");
+    const previewWindow = window.open();
+    previewWindow.document.write(
+      `<iframe width="100%" height="100%" src="${pdfDataUri}"></iframe>`
+    );
   };
 
   return (
@@ -187,7 +221,16 @@ function App() {
               onChange={handleImageChange}
             />
           </Button>
-
+          {/* Image Preview */}
+          {imagePreview && (
+            <Box mt={2} textAlign="center">
+              <img
+                src={imagePreview}
+                alt="Recipe Preview"
+                style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 10 }}
+              />
+            </Box>
+          )}
           {/* Ingredients Section */}
           <Typography variant="h6" sx={{ mt: 3 }}>
             Ingredients
@@ -203,6 +246,8 @@ function App() {
                   onChange={(e) => handleIngredientChange(index, e)}
                   required
                   color="primary"
+                  multiline
+                  sx={{ mt: 2 }}
                 />
               </Grid>
               <Grid item xs={5}>
@@ -214,6 +259,8 @@ function App() {
                   onChange={(e) => handleIngredientChange(index, e)}
                   required
                   color="primary"
+                  multiline
+                  sx={{ mt: 2 }}
                 />
               </Grid>
               <Grid item xs={2}>
@@ -252,6 +299,8 @@ function App() {
                   onChange={(e) => handleDirectionChange(index, e)}
                   required
                   color="primary"
+                  multiline
+                  sx={{ mt: 2 }}
                 />
               </Grid>
               <Grid item xs={2}>
@@ -277,8 +326,11 @@ function App() {
           </Box>
 
           <Box mt={4} textAlign="center">
-            <Button type="submit" variant="contained" color="primary">
+            <Button type="submit" variant="contained" color="primary" sx={{ mr: 2 }}>
               Submit & Download PDF
+            </Button>
+            <Button variant="outlined" color="secondary" onClick={handlePreview}>
+              Preview PDF
             </Button>
           </Box>
         </Box>
